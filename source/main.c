@@ -89,21 +89,23 @@ void UpdateSpriteMemory(void);
 
 void DMAFastCopy(void*, void*, unsigned int, unsigned int);
 
+
 int main(void) {
 	signed short x = 88, y = 48;
 	signed short xinc = 1;
 
 	int char_number = 0;
-	int n;
 
 	int curPalette = 0;
 	int prevPalette = curPalette;
+
+	int frames = 0;
 
 	//set video mode 2 enable objects and map them 1D in memory
 	SetMode(2 | OBJ_ENABLE | OBJ_MAP_1D);
 
 	//set all sprites to be at bottom right corner
-	for (n = 0; n < 128; n++) {
+	for (int n = 0; n < 128; n++) {
 		sprites[n].attribute0 = 160;
 		sprites[n].attribute1 = 240;
 	}
@@ -123,6 +125,11 @@ int main(void) {
 		//set its x coord
 		sprites[0].attribute1 = SIZE_64 | x;
 
+		UpdateSpriteMemory();
+		WaitForVBlank();
+
+		frames++;
+		if (frames == 20) {
 
 			//check if buttons were pressed
 			if (*BUTTONS) {
@@ -135,6 +142,8 @@ int main(void) {
 				else if (!(*BUTTONS & BTN_DOWN)) curPalette = 2;
 				else curPalette = 0;
 			}
+			frames = 0;
+		}
 		//check if palette var was changed to avoid copying same stuff over and over again
 		if (curPalette != prevPalette) {
 			switch (curPalette) {
@@ -149,9 +158,6 @@ int main(void) {
 					break;
 			}
 		}
-
-		UpdateSpriteMemory();
-		WaitForVBlank();
 
 		prevPalette = curPalette;
 
