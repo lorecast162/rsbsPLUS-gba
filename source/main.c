@@ -76,6 +76,19 @@ Sprite sprites[128];
 void WaitForVBlank(void);
 void UpdateSpriteMemory(void);
 
+//defines needed by DMAFastCopy
+#define REG_DMA3SAD *(volatile unsigned int*)0x40000D4
+#define REG_DMA3DAD *(volatile unsigned int*)0x40000D8
+#define REG_DMA3CNT *(volatile unsigned int*)0x40000DC
+#define DMA_ENABLE 0x80000000
+#define DMA_TIMING_IMMEDIATE 0x00000000
+#define DMA_16 0x00000000
+#define DMA_32 0x04000000
+#define DMA_32NOW (DMA_ENABLE | DMA_TIMING_IMMEDIATE | DMA_32)
+#define DMA_16NOW (DMA_ENABLE | DMA_TIMING_IMMEDIATE | DMA_16)
+
+void DMAFastCopy(void*, void*, unsigned int, unsigned int);
+
 int main(void) {
 	signed short x = 88, y = 48;
 	signed short xinc = 1;
@@ -96,14 +109,9 @@ int main(void) {
 	}
 
 	//copy sprites palette
-	for( n = 0; n < 256; n++) {
-		SpritePal[n] = spherePalette[n];
-	}
-
-	//copy red sphere data
-	for (n = 0; n < 256*8; n++) {
-		SpriteData[n] = sphereData[n];
-	}
+	DMAFastCopy( (void*)spherePalette, (void*)SpritePal, 256, DMA_16NOW );
+	//copy sprites data
+	DMAFastCopy( (void*)sphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
 
 	//give it attributes
 	sprites[0].attribute0 = COLOR_256 | y;
@@ -132,18 +140,14 @@ int main(void) {
 		if (curPalette != prevPalette) {
 			switch (curPalette) {
 				case 0:
-					for (n = 0; n < 256*8; n++) {
-						SpriteData[n] = sphereData[n];
-					}
+					DMAFastCopy( (void*)sphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
 					break;
 				case 1:
-					for (n = 0; n < 256*8; n++) {
-						SpriteData[n] = blauSphereData[n];
-					}
+					DMAFastCopy( (void*)blauSphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
 					break;
 				case 2:
 					for (n = 0; n < 256*8; n++) {
-						SpriteData[n] = gruenSphereData[n];
+					DMAFastCopy( (void*)gruenSphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
 					}
 					break;
 			}
@@ -165,7 +169,13 @@ void UpdateSpriteMemory(void) {
 
 	tmp = (unsigned short*)sprites;
 
-	for (n = 0; n < 128*4; n++) {
-		SpriteMem[n]=tmp[n];
+	DMAFastCopy( (void*)tmp, (void*)SpriteMem, 128*4, DMA_16NOW );
+}
+
+void DMAFastCopy(void* source, void* dest, unsigned int count, unsigned int mode) {
+	if (mode == DMA_16NOW || mode == DMA_32NOW) {
+		REG_DMA3SAD = (unsigned int) source;
+		REG_DMA3DAD = (unsigned int) dest;
+		REG_DMA3CNT = count | mode;
 	}
 }
