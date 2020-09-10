@@ -19,15 +19,15 @@ typedef unsigned short u16;
 volatile unsigned int *BUTTONS = (volatile unsigned int *)0x04000130;
 
 //video status registers
-#define REG_DISPCNT *(volatile unsigned short*)0x4000000
-#define BGPaletteMem ((unsigned short*)0x5000000)
-#define REG_VCOUNT *(volatile unsigned short*)0x4000006
-#define REG_DISPSTAT *(volatile unsigned short*)0x4000004
+#define REG_DISPCNT *(volatile u16*)0x4000000
+#define BGPaletteMem ((u16*)0x5000000)
+#define REG_VCOUNT *(volatile u16*)0x4000006
+#define REG_DISPSTAT *(volatile u16*)0x4000004
 
 //sprite registers
-#define SpriteMem  ((unsigned short*)0x7000000)
-#define SpriteData ((unsigned short*)0x6010000)
-#define SpritePal  ((unsigned short*)0x5000200)
+#define SpriteMem  ((u16*)0x7000000)
+#define SpriteData ((u16*)0x6010000)
+#define SpritePal  ((u16*)0x5000200)
 
 //object flags
 #define OBJ_MAP_2D 0x0
@@ -59,10 +59,10 @@ volatile unsigned int *BUTTONS = (volatile unsigned int *)0x04000130;
 
 //sprite attributes struct
 typedef struct tagSprite {
-	unsigned short attribute0;
-	unsigned short attribute1;
-	unsigned short attribute2;
-	unsigned short attribute3;
+	u16 attribute0;
+	u16 attribute1;
+	u16 attribute2;
+	u16 attribute3;
 }Sprite, *pSprite;
 
 Sprite sprites[128];
@@ -118,24 +118,23 @@ int main(void) {
 	sprites[0].attribute1 = SIZE_64 | x;
 	sprites[0].attribute2 = char_number;
 
+
 	while(1) {
 		//set its x coord
 		sprites[0].attribute1 = SIZE_64 | x;
 
-		WaitForVBlank();
 
-		//check if buttons were pressed
-		if (*BUTTONS) {
-			//switch palette var
-			if (!(*BUTTONS & BTN_UP)) curPalette = 1;
-			else if (!(*BUTTONS & BTN_DOWN)) curPalette = 2;
-			else curPalette = 0;
+			//check if buttons were pressed
+			if (*BUTTONS) {
+				//horiz movement
+				if (!(*BUTTONS & BTN_LEFT) && x >= 0) x -= xinc;
+				else if (!(*BUTTONS & BTN_RIGHT) && (x + sphere_WIDTH) <= 240) x += xinc;
 
-			//horiz movement
-			if (!(*BUTTONS & BTN_LEFT) && x >= 0) x -= xinc;
-			else if (!(*BUTTONS & BTN_RIGHT) && (x + sphere_WIDTH) <= 240) x += xinc;
-		}
-
+				//switch palette var
+				if (!(*BUTTONS & BTN_UP)) curPalette = 1;
+				else if (!(*BUTTONS & BTN_DOWN)) curPalette = 2;
+				else curPalette = 0;
+			}
 		//check if palette var was changed to avoid copying same stuff over and over again
 		if (curPalette != prevPalette) {
 			switch (curPalette) {
@@ -146,29 +145,26 @@ int main(void) {
 					DMAFastCopy( (void*)blauSphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
 					break;
 				case 2:
-					for (n = 0; n < 256*8; n++) {
 					DMAFastCopy( (void*)gruenSphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
-					}
 					break;
 			}
 		}
 
 		UpdateSpriteMemory();
+		WaitForVBlank();
 
 		prevPalette = curPalette;
+
 	}
-	
+
 	return 0;
 }
 
 void WaitForVBlank(void) { while((REG_DISPSTAT & 1)); }
 
 void UpdateSpriteMemory(void) {
-	int n;
-	unsigned short* tmp;
-
-	tmp = (unsigned short*)sprites;
-
+	u16* tmp;
+	tmp = (u16*)sprites;
 	DMAFastCopy( (void*)tmp, (void*)SpriteMem, 128*4, DMA_16NOW );
 }
 
