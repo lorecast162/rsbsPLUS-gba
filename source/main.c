@@ -12,15 +12,47 @@ typedef unsigned short u16;
 #include "blauPalette.h"
 #include "gruenPalette.h"
 
+#include "background.h"
+
+#define TILES 16084
+
+//background data
+//extern const u16 background_Map[1024];
+//extern const u16 background_Palette[256];
+//extern const unsigned char  background_Tiles[TILES];
+
 //display mode setting macro
 #define SetMode(mode) REG_DISPCNT = (mode)
 
 //buttons register
 volatile unsigned int *BUTTONS = (volatile unsigned int *)0x04000130;
 
+//background enable flags
+#define BG0_ENABLE 0x100
+#define BG1_ENABLE 0x200
+#define BG2_ENABLE 0x400
+#define BG3_ENABLE 0x800
+
+//background registers
+#define REG_BG0HOFS *(volatile u16*)0x4000010
+#define REG_BG0VOFS *(volatile u16*)0x4000012
+#define REG_BG0CNT  *(volatile u16*)0x4000008
+#define BG_COLOR256 0x80
+#define CHAR_SHIFT 0x2
+#define SCREEN_SHIFT 0x8
+#define BG_WRAPAROUND 0x1
+#define BGPaletteMem ((u16*)0x5000000)
+
+#define TEXTBG_SIZE_256x256 0x0
+#define TEXTBG_SIZE_256x512 0x8000
+#define TEXTBG_SIZE_512x256 0x4000
+#define TEXTBG_SIZE_512x512 0xC000
+
+#define CharBaseBlock(n)   (((n)*0x4000)+0x6000000)
+#define ScreenBaseBlock(n) (((n)*0x800)+0x6000000)
+
 //video status registers
 #define REG_DISPCNT *(volatile u16*)0x4000000
-#define BGPaletteMem ((u16*)0x5000000)
 #define REG_VCOUNT *(volatile u16*)0x4000006
 #define REG_DISPSTAT *(volatile u16*)0x4000004
 
@@ -94,6 +126,12 @@ int main(void) {
 	signed short x = 88, y = 48;
 	signed short xinc = 1;
 
+	int bgx = 0, bgy = 0;
+
+	u16* bg0map = (u16*)ScreenBaseBlock(31);
+
+	REG_BG0CNT = (TEXTBG_SIZE_256x256 | BG_COLOR256 | (31 << SCREEN_SHIFT) | BG_WRAPAROUND);
+
 	int char_number = 0;
 
 	int curPalette = 0;
@@ -101,8 +139,13 @@ int main(void) {
 
 	int frames = 0;
 
-	//set video mode 2 enable objects and map them 1D in memory
-	SetMode(2 | OBJ_ENABLE | OBJ_MAP_1D);
+	//set video mode 0 enable objects and map them 1D in memory
+	SetMode(0 | BG0_ENABLE | OBJ_ENABLE | OBJ_MAP_1D);
+
+	//copy background data
+	DMAFastCopy( (void*)backgroundPal,      (void*)BGPaletteMem,     256,        DMA_16NOW );
+	DMAFastCopy( (void*)backgroundMap,      (void*)bg0map,           512,        DMA_32NOW );
+	DMAFastCopy( (void*)backgroundTiles,    (void*)CharBaseBlock(0), TILES / 4 , DMA_32NOW );
 
 	//set all sprites to be at bottom right corner
 	for (int n = 0; n < 128; n++) {
@@ -128,6 +171,9 @@ int main(void) {
 		UpdateSpriteMemory();
 		WaitForVBlank();
 
+		REG_BG0VOFS = bgy;
+		REG_BG0HOFS = bgx;
+
 		frames++;
 		if (frames == 20) {
 
@@ -144,6 +190,13 @@ int main(void) {
 			}
 			frames = 0;
 		}
+		if (frames == 40) 
+//			bgx++;
+		if (frames == 80) {
+//			bgy++;
+//			frames = 0;
+		}
+
 		//check if palette var was changed to avoid copying same stuff over and over again
 		if (curPalette != prevPalette) {
 			switch (curPalette) {
