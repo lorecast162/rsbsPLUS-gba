@@ -14,13 +14,6 @@ typedef unsigned short u16;
 
 #include "background.h"
 
-#define TILES 16084
-
-//background data
-//extern const u16 background_Map[1024];
-//extern const u16 background_Palette[256];
-//extern const unsigned char  background_Tiles[TILES];
-
 //display mode setting macro
 #define SetMode(mode) REG_DISPCNT = (mode)
 
@@ -143,9 +136,9 @@ int main(void) {
 	SetMode(0 | BG0_ENABLE | OBJ_ENABLE | OBJ_MAP_1D);
 
 	//copy background data
-	DMAFastCopy( (void*)backgroundPal,      (void*)BGPaletteMem,     256,        DMA_16NOW );
-	DMAFastCopy( (void*)backgroundMap,      (void*)bg0map,           512,        DMA_32NOW );
-	DMAFastCopy( (void*)backgroundTiles,    (void*)CharBaseBlock(0), TILES / 4 , DMA_32NOW );
+	DMAFastCopy( (void*)backgroundPal,      (void*)BGPaletteMem,     backgroundPalLen,            DMA_16NOW );
+	DMAFastCopy( (void*)backgroundMap,      (void*)bg0map,           backgroundMapLen,            DMA_32NOW );
+	DMAFastCopy( (void*)backgroundTiles,    (void*)CharBaseBlock(0), backgroundTilesLen / 4,      DMA_32NOW );
 
 	//set all sprites to be at bottom right corner
 	for (int n = 0; n < 128; n++) {
@@ -188,13 +181,13 @@ int main(void) {
 				else if (!(*BUTTONS & BTN_DOWN)) curPalette = 2;
 				else curPalette = 0;
 			}
-			frames = 0;
+//			frames = 0;
 		}
 		if (frames == 40) 
-//			bgx++;
+			bgx++;
 		if (frames == 80) {
-//			bgy++;
-//			frames = 0;
+			bgy++;
+			frames = 0;
 		}
 
 		//check if palette var was changed to avoid copying same stuff over and over again
