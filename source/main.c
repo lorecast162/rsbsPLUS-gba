@@ -7,12 +7,16 @@ MULTIBOOT
 
 typedef unsigned short u16;
 
-//include spheres data and palette
-#include "sphere.h"
-#include "blauPalette.h"
-#include "gruenPalette.h"
-
+//background data header
 #include "background.h"
+
+//include spheres data and palette
+#define sphere_WIDTH 64
+#define sphere_HEIGHT 64
+#include "rotSphere.h"
+#include "blauSphere.h"
+#include "gruenSphere.h"
+#include "sprites.h"
 
 //display mode setting macro
 #define SetMode(mode) REG_DISPCNT = (mode)
@@ -147,9 +151,9 @@ int main(void) {
 	}
 
 	//copy sprites palette
-	DMAFastCopy( (void*)spherePalette, (void*)SpritePal, 256, DMA_16NOW );
+	DMAFastCopy( (void*)spritesPal, (void*)SpritePal, spritesPalLen / 2, DMA_16NOW );
 	//copy sprites data
-	DMAFastCopy( (void*)sphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
+	DMAFastCopy( (void*)rotSphereTiles, (void*)SpriteData, rotSphereTilesLen / 2, DMA_16NOW );
 
 	//give it attributes
 	sprites[0].attribute0 = COLOR_256 | y;
@@ -168,7 +172,7 @@ int main(void) {
 		REG_BG0HOFS = bgx;
 
 		frames++;
-		if (frames == 20) {
+		if (frames % 20 == 0) {
 
 			//check if buttons were pressed
 			if (*BUTTONS) {
@@ -181,26 +185,24 @@ int main(void) {
 				else if (!(*BUTTONS & BTN_DOWN)) curPalette = 2;
 				else curPalette = 0;
 			}
-//			frames = 0;
 		}
-		if (frames == 40) 
+		if (frames % 60 == 0) 
 			bgx++;
-		if (frames == 80) {
+		if (frames % 150 == 0) {
 			bgy++;
-			frames = 0;
 		}
 
 		//check if palette var was changed to avoid copying same stuff over and over again
 		if (curPalette != prevPalette) {
 			switch (curPalette) {
 				case 0:
-					DMAFastCopy( (void*)sphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
+					DMAFastCopy( (void*)rotSphereTiles, (void*)SpriteData, rotSphereTilesLen / 2, DMA_16NOW );
 					break;
 				case 1:
-					DMAFastCopy( (void*)blauSphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
+					DMAFastCopy( (void*)blauSphereTiles, (void*)SpriteData, blauSphereTilesLen / 2, DMA_16NOW );
 					break;
 				case 2:
-					DMAFastCopy( (void*)gruenSphereData, (void*)SpriteData, 256 * 8, DMA_16NOW );
+					DMAFastCopy( (void*)gruenSphereTiles, (void*)SpriteData, gruenSphereTilesLen / 2, DMA_16NOW );
 					break;
 			}
 		}
