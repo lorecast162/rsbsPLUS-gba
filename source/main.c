@@ -1,11 +1,7 @@
 //SPDX-License-Identifier: BSD-3-Clause
 //SPDX-FileCopyrightText: 2020 Lorenzo Cauli (lorecast162)
 
-//enable multiboot?
-#define MULTIBOOT int __gba_multiboot;
-MULTIBOOT
-
-typedef unsigned short u16;
+#include <tonc.h>
 
 //background data header
 #include "background.h"
@@ -18,214 +14,114 @@ typedef unsigned short u16;
 #include "gruenSphere.h"
 #include "sprites.h"
 
-//display mode setting macro
-#define SetMode(mode) REG_DISPCNT = (mode)
-
-//buttons register
-volatile unsigned int *BUTTONS = (volatile unsigned int *)0x04000130;
-
-//background enable flags
-#define BG0_ENABLE 0x100
-#define BG1_ENABLE 0x200
-#define BG2_ENABLE 0x400
-#define BG3_ENABLE 0x800
-
-//background registers
-#define REG_BG0HOFS *(volatile u16*)0x4000010
-#define REG_BG0VOFS *(volatile u16*)0x4000012
-#define REG_BG0CNT  *(volatile u16*)0x4000008
-#define BG_COLOR256 0x80
-#define CHAR_SHIFT 0x2
-#define SCREEN_SHIFT 0x8
-#define BG_WRAPAROUND 0x1
-#define BGPaletteMem ((u16*)0x5000000)
-
-#define TEXTBG_SIZE_256x256 0x0
-#define TEXTBG_SIZE_256x512 0x8000
-#define TEXTBG_SIZE_512x256 0x4000
-#define TEXTBG_SIZE_512x512 0xC000
-
-#define CharBaseBlock(n)   (((n)*0x4000)+0x6000000)
-#define ScreenBaseBlock(n) (((n)*0x800)+0x6000000)
-
-//video status registers
-#define REG_DISPCNT *(volatile u16*)0x4000000
-#define REG_VCOUNT *(volatile u16*)0x4000006
-#define REG_DISPSTAT *(volatile u16*)0x4000004
-
-//sprite registers
-#define SpriteMem  ((u16*)0x7000000)
-#define SpriteData ((u16*)0x6010000)
-#define SpritePal  ((u16*)0x5000200)
-
-//object flags
-#define OBJ_MAP_2D 0x0
-#define OBJ_MAP_1D 0x40
-#define OBJ_ENABLE 0x1000
-
-//various sprite flags
-#define ROTATION_FLAG 0x100
-#define SIZE_DOUBLE 0x200
-#define MODE_NORMAL 0x0
-#define MODE_TRANSPARENT 0x400
-#define MODE_WINDOWED 0x800
-#define MOSAIC 0x1000
-#define COLOR_16 0x0
-#define COLOR_256 0x2000
-#define SQUARE 0x0
-#define TALL 0x4000
-#define WIDE 0x8000
-#define ROTDATA(n) ((n) << 9)
-#define HORIZONTAL_FLIP 0x1000
-#define VERTICAL_FLIP 0x2000
-#define SIZE_8 0x0
-#define SIZE_16 0x4000
-#define SIZE_32 0x8000
-#define SIZE_64 0xC000
-
-#define PRIORITY(n) ( (n) << 10 )
-#define PALETTE(n) ( (n) << 12 )
-
-//sprite attributes struct
-typedef struct tagSprite {
-	u16 attribute0;
-	u16 attribute1;
-	u16 attribute2;
-	u16 attribute3;
-}Sprite, *pSprite;
-
-Sprite sprites[128];
-
-//gba buttons
-#define BTN_UP 64
-#define BTN_DOWN 128
-#define BTN_LEFT 32
-#define BTN_RIGHT 16
-
-void WaitForVBlank(void);
-void UpdateSpriteMemory(void);
-
-//defines needed by DMAFastCopy
-#define REG_DMA3SAD *(volatile unsigned int*)0x40000D4
-#define REG_DMA3DAD *(volatile unsigned int*)0x40000D8
-#define REG_DMA3CNT *(volatile unsigned int*)0x40000DC
-#define DMA_ENABLE 0x80000000
-#define DMA_TIMING_IMMEDIATE 0x00000000
-#define DMA_16 0x00000000
-#define DMA_32 0x04000000
-#define DMA_32NOW (DMA_ENABLE | DMA_TIMING_IMMEDIATE | DMA_32)
-#define DMA_16NOW (DMA_ENABLE | DMA_TIMING_IMMEDIATE | DMA_16)
-
-void DMAFastCopy(void*, void*, unsigned int, unsigned int);
-
+#define CharBaseBlock(n)   (void*)(tile_mem[n])
+#define ScreenBaseBlock(n) (void*)(se_mem[n])
 
 int main(void) {
+	//sprite coordinates and x inc variable to regulate sprite speed
 	signed short x = 88, y = 48;
-	signed short xinc = 1;
+	signed short xinc = 2;
 
+	//sprite attributes variable. will use this as buffer
+	OBJ_ATTR sprite;
+
+	//background coordinates. used for scrolling
 	int bgx = 0, bgy = 0;
 
+	//background tilemap pointer
 	u16* bg0map = (u16*)ScreenBaseBlock(31);
 
-	REG_BG0CNT = (TEXTBG_SIZE_256x256 | BG_COLOR256 | (31 << SCREEN_SHIFT) | BG_WRAPAROUND);
+	//set background 0 control register to use 32x32 tiles (32 tiles wide, 32 tiles high), use 8bit color and use screen base block 31
+	REG_BG0CNT = (BG_REG_32x32 | BG_8BPP | BG_SBB(31) );
 
+	//this is our sprite's number
 	int char_number = 0;
 
+	//used to switch palette without doing it every frame
 	int curPalette = 0;
 	int prevPalette = curPalette;
 
-	int frames = 0;
+	//frame counter
+	u16 frames = 0;
 
-	//set video mode 0 enable objects and map them 1D in memory
-	SetMode(0 | BG0_ENABLE | OBJ_ENABLE | OBJ_MAP_1D);
+	//NULL out OAM
+	OAM_CLEAR();
+
+	//set video mode 0, use background 0, enable objects and map them 1D in memory
+	REG_DISPCNT = (DCNT_MODE0 | DCNT_BG0 | DCNT_OBJ | DCNT_OBJ_1D);
 
 	//copy background data
-	DMAFastCopy( (void*)backgroundPal,      (void*)BGPaletteMem,     backgroundPalLen,            DMA_16NOW );
-	DMAFastCopy( (void*)backgroundMap,      (void*)bg0map,           backgroundMapLen,            DMA_32NOW );
-	DMAFastCopy( (void*)backgroundTiles,    (void*)CharBaseBlock(0), backgroundTilesLen / 4,      DMA_32NOW );
-
-	//set all sprites to be at bottom right corner
-	for (int n = 0; n < 128; n++) {
-		sprites[n].attribute0 = 160;
-		sprites[n].attribute1 = 240;
-	}
+	//palette
+	DMA_TRANSFER( (void*)MEM_PAL_BG,		(void*)backgroundPal,      backgroundPalLen,			3,	DMA_16NOW );
+	//tilemap
+	DMA_TRANSFER( (void*)bg0map,			(void*)backgroundMap,      backgroundMapLen, 			3,	DMA_32NOW );
+	//raw tiles data
+	DMA_TRANSFER( (void*)CharBaseBlock(0),	(void*)backgroundTiles,    backgroundTilesLen / 4, 		3,	DMA_32NOW );
 
 	//copy sprites palette
-	DMAFastCopy( (void*)spritesPal, (void*)SpritePal, spritesPalLen / 2, DMA_16NOW );
+	DMA_TRANSFER( MEM_PAL_OBJ, (void*)spritesPal, spritesPalLen/2, 3, DMA_16NOW );
 	//copy sprites data
-	DMAFastCopy( (void*)rotSphereTiles, (void*)SpriteData, rotSphereTilesLen / 2, DMA_16NOW );
+	DMA_TRANSFER( MEM_VRAM_OBJ, (void*)rotSphereTiles, rotSphereTilesLen / 2, 3, DMA_16NOW );
 
-	//give it attributes
-	sprites[0].attribute0 = COLOR_256 | y;
-	sprites[0].attribute1 = SIZE_64 | x;
-	sprites[0].attribute2 = char_number;
-
+	//set sprite attrs
+	//use 8 bit color and set y coords
+	sprite.attr0 = ATTR0_8BPP | (y & 0x00FF);
+	//use 64x64 pixel sprites and set x coords
+	sprite.attr1 = ATTR1_SIZE_64 | (x & 0x00FF);
+	//set sprite to our character number
+	sprite.attr2 = char_number;
 
 	while(1) {
-		//set its x coord
-		sprites[0].attribute1 = SIZE_64 | x;
+		//update sprite x coord
+		sprite.attr1 = ATTR1_SIZE_64 | x;
 
-		UpdateSpriteMemory();
-		WaitForVBlank();
+		//wait for vertical sync
+		vid_vsync();
 
+		//copy sprite to OAM
+		oam_copy(oam_mem, &sprite, 1);	
+
+		//set background offsets
 		REG_BG0VOFS = bgy;
 		REG_BG0HOFS = bgx;
 
-		frames++;
-		if (frames % 20 == 0) {
-
 			//check if buttons were pressed
-			if (*BUTTONS) {
+			if (REG_KEYS) {
 				//horiz movement
-				if (!(*BUTTONS & BTN_LEFT) && x >= 0) x -= xinc;
-				else if (!(*BUTTONS & BTN_RIGHT) && (x + sphere_WIDTH) <= 240) x += xinc;
+				if (!(REG_KEYS & KEY_LEFT) && x >= 0) x -= xinc;
+				else if (!(REG_KEYS & KEY_RIGHT) && (x + sphere_WIDTH) <= 240) x += xinc;
 
-				//switch palette var
-				if (!(*BUTTONS & BTN_UP)) curPalette = 1;
-				else if (!(*BUTTONS & BTN_DOWN)) curPalette = 2;
+				//switch palette
+				if (!(REG_KEYS & KEY_UP)) curPalette = 1;
+				else if (!(REG_KEYS & KEY_DOWN)) curPalette = 2;
 				else curPalette = 0;
 			}
-		}
-		if (frames % 60 == 0) 
+			//increment bg x scroll every frame
 			bgx++;
-		if (frames % 150 == 0) {
-			bgy++;
-		}
+			//increment bg y scroll every 2 frames
+			if (frames % 2 == 0 )bgy++;
 
 		//check if palette var was changed to avoid copying same stuff over and over again
 		if (curPalette != prevPalette) {
 			switch (curPalette) {
 				case 0:
-					DMAFastCopy( (void*)rotSphereTiles, (void*)SpriteData, rotSphereTilesLen / 2, DMA_16NOW );
+					DMA_TRANSFER( MEM_VRAM_OBJ, (void*)rotSphereTiles,		rotSphereTilesLen / 2,  3, DMA_16NOW );
 					break;
 				case 1:
-					DMAFastCopy( (void*)blauSphereTiles, (void*)SpriteData, blauSphereTilesLen / 2, DMA_16NOW );
+					DMA_TRANSFER( MEM_VRAM_OBJ, (void*)blauSphereTiles,	blauSphereTilesLen / 2,  3, DMA_16NOW );
 					break;
 				case 2:
-					DMAFastCopy( (void*)gruenSphereTiles, (void*)SpriteData, gruenSphereTilesLen / 2, DMA_16NOW );
+					DMA_TRANSFER( MEM_VRAM_OBJ, (void*)gruenSphereTiles,	gruenSphereTilesLen / 2,  3, DMA_16NOW );
 					break;
 			}
 		}
 
+		//assign current palette to previous for above check
 		prevPalette = curPalette;
-
+		
+		//increment frame counter
+		frames++;
 	}
 
 	return 0;
-}
-
-void WaitForVBlank(void) { while((REG_DISPSTAT & 1)); }
-
-void UpdateSpriteMemory(void) {
-	u16* tmp;
-	tmp = (u16*)sprites;
-	DMAFastCopy( (void*)tmp, (void*)SpriteMem, 128*4, DMA_16NOW );
-}
-
-void DMAFastCopy(void* source, void* dest, unsigned int count, unsigned int mode) {
-	if (mode == DMA_16NOW || mode == DMA_32NOW) {
-		REG_DMA3SAD = (unsigned int) source;
-		REG_DMA3DAD = (unsigned int) dest;
-		REG_DMA3CNT = count | mode;
-	}
 }
