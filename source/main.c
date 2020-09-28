@@ -79,13 +79,16 @@ int main(void) {
 	//initialize interrupt request handlers
 	IRQ_INIT();
 
-	//set vblank IRQ to maxmod IRQ. needed!
+	//set vblank IRQ to maxmod IRQ handler function. needed!
 	irq_set(II_VBLANK, mmVBlank, ISR_DEF);
+
+	//enable Vblank IRQ
 	irq_enable(II_VBLANK);
 	
 	//initialize maxmod with soundbank and 6 audio channels
 	mmInitDefault( (mm_addr)soundbank_bin, 6 );
 
+	//start bgm playback
 	mmStart(MOD_BGM, MM_PLAY_LOOP);
 
 	while(1) {
@@ -95,6 +98,7 @@ int main(void) {
 		//wait for vertical sync
 		vid_vsync();
 
+		//play back this frame's sound
 		mmFrame();
 
 		//copy sprite to OAM
@@ -115,10 +119,8 @@ int main(void) {
 				else if (!(REG_KEYS & KEY_DOWN)) curPalette = 2;
 				else curPalette = 0;
 			}
-			//increment bg x scroll every frame
-			bgx++;
-			//increment bg y scroll every 2 frames
-			if (frames % 2 == 0 )bgy++;
+			//decrement bg x scroll every 4 frames
+			if (frames % 4 == 0 )bgx--;
 
 		//check if palette var was changed to avoid copying same stuff over and over again
 		if (curPalette != prevPalette) {
