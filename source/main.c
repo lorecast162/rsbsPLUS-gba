@@ -2,6 +2,11 @@
 //SPDX-FileCopyrightText: 2020 Lorenzo Cauli (lorecast162)
 
 #include <tonc.h>
+#include <maxmod.h>
+
+//soundbank include for maxmod. generated from files in music folder
+#include "soundbank.h"
+#include "soundbank_bin.h"
 
 //background data header
 #include "background.h"
@@ -71,12 +76,26 @@ int main(void) {
 	//set sprite to our character number
 	sprite.attr2 = char_number;
 
+	//initialize interrupt request handlers
+	IRQ_INIT();
+
+	//set vblank IRQ to maxmod IRQ. needed!
+	irq_set(II_VBLANK, mmVBlank, ISR_DEF);
+	irq_enable(II_VBLANK);
+	
+	//initialize maxmod with soundbank and 6 audio channels
+	mmInitDefault( (mm_addr)soundbank_bin, 6 );
+
+	mmStart(MOD_BGM, MM_PLAY_LOOP);
+
 	while(1) {
 		//update sprite x coord
 		sprite.attr1 = ATTR1_SIZE_64 | x;
 
 		//wait for vertical sync
 		vid_vsync();
+
+		mmFrame();
 
 		//copy sprite to OAM
 		oam_copy(oam_mem, &sprite, 1);	
